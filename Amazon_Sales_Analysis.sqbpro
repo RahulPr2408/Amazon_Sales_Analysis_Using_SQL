@@ -1,0 +1,398 @@
+<?xml version="1.0" encoding="UTF-8"?><sqlb_project><db path="D:/SQL/Projects/Amazon Sales Analysis/Amazon_Sales_Analysis.db" readonly="0" foreign_keys="1" case_sensitive_like="0" temp_store="0" wal_autocheckpoint="1000" synchronous="2"/><attached/><window><main_tabs open="structure browser pragmas query" current="3"/></window><tab_structure><column_width id="0" width="300"/><column_width id="1" width="0"/><column_width id="2" width="125"/><column_width id="3" width="1826"/><column_width id="4" width="0"/><expanded_item id="0" parent="1"/><expanded_item id="1" parent="1"/><expanded_item id="2" parent="1"/><expanded_item id="3" parent="1"/></tab_structure><tab_browse><current_table name="4,9:mainCustomers"/><default_encoding codec=""/><browse_table_settings><table schema="main" name="Customers" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort/><column_widths><column index="1" value="117"/><column index="2" value="148"/><column index="3" value="145"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="Orders" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort/><column_widths><column index="1" value="83"/><column index="2" value="105"/><column index="3" value="117"/><column index="4" value="145"/><column index="5" value="116"/><column index="6" value="127"/><column index="7" value="104"/><column index="8" value="136"/><column index="9" value="82"/><column index="10" value="75"/><column index="11" value="83"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="Products" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort/><column_widths><column index="1" value="104"/><column index="2" value="238"/><column index="3" value="66"/><column index="4" value="66"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table></browse_table_settings></tab_browse><tab_sql><sql name="SQL 1">-- 1. List all unique product categories. --
+
+SELECT DISTINCT category FROM Orders;
+
+-- 2. Show the total number of orders placed per state. --
+
+SELECT state, COUNT(*) as total_orders
+FROM Orders
+GROUP BY state;
+
+-- 3. Find the average quantity ordered per category. --
+SELECT category, round(avg(quantity), 2)
+FROM Orders
+GROUP BY category;
+
+-- 4. Display the top 5 customers who made the highest profits. --
+SELECT o.customer_id, sum(o.sale - (o.quantity * p.cogs)) AS total_profit
+FROM Orders o
+JOIN Products p
+ON p.product_id = o.product_id
+GROUP BY o.customer_id
+ORDER BY total_profit DESC
+LIMIT 5;
+
+-- 5. List the total revenue per seller. --
+
+SELECT 
+  seller_id,
+  SUM(sale) AS total_revenue
+FROM orders
+GROUP BY seller_id;
+
+-- 6. Find the product with the highest price. --
+SELECT product_id, product_name, price
+FROM Products
+WHERE price = (SELECT max(price) FROM Products);
+
+-- 7. Count the total number of returns for each product. -- 
+
+SELECT o.product_id, count(*) as total_num_of_return
+FROM Return r
+JOIN Orders o
+ON r.order_id = o.order_id
+GROUP BY o.product_id;
+
+-- 8. Show number of orders placed per month. -- 
+
+SELECT strftime('%m', order_date) as order_month,
+count(*) as total_orders
+FROM Orders
+GROUP BY order_month
+ORDER BY order_month;
+
+-- 9. Identify the top 5 products that generated the highest revenue. --
+SELECT o.product_id, p.product_name, sum(o.sale) as total_revenue
+FROM Orders o
+JOIN Products p
+ON o.product_id = p.product_id
+GROUP BY o.product_id, p.product_name
+ORDER BY total_revenue DESC
+LIMIT 5;
+
+-- 10. Display customers who have placed more than 20 orders. --
+SELECT c.customer_id, c.customer_name, count(*) as order_count
+FROM Orders o
+JOIN Customers c
+ON o.customer_id = c.customer_id
+GROUP BY c.customer_id, c.customer_name
+HAVING count(*) &gt; 20;
+
+-- 11. List all sellers who haven’t had any returns. --
+SELECT DISTINCT
+  s.seller_id,
+  s.seller_name
+FROM sellers s
+LEFT JOIN orders o ON s.seller_id = o.seller_id
+LEFT JOIN Return r ON o.order_id = r.order_id
+WHERE r.order_id IS NULL;
+
+-- 12. Find the average sales amount per order per customer. --
+
+SELECT 
+  c.customer_id,
+  c.customer_name,
+  ROUND(AVG(sale), 2) AS avg_sale_per_order
+FROM orders o
+JOIN Customers c
+ON o.customer_id = c.customer_id
+GROUP BY c.customer_id, c.customer_name;
+
+-- 13. Display all orders that were returned. --
+SELECT 
+  o.*
+FROM orders o
+INNER JOIN Return r ON o.order_id = r.order_id;
+
+-- 14. Determine the most frequently returned product. -- 
+
+SELECT 
+  o.product_id,
+  p.product_name,
+  COUNT(*) AS return_count
+FROM Return r
+JOIN orders o ON r.order_id = o.order_id
+JOIN products p ON o.product_id = p.product_id
+GROUP BY o.product_id, p.product_name
+ORDER BY return_count DESC
+LIMIT 1;
+
+-- 15. List products with a sale price lower than the average price of their category. --
+
+SELECT 
+  o.product_id,
+  p.product_name,
+  o.sale,
+  o.category
+FROM orders o
+JOIN products p ON o.product_id = p.product_id
+WHERE o.sale &lt; (
+  SELECT AVG(sale)
+  FROM orders o2
+  WHERE o2.category = o.category
+);
+
+-- 16. Calculate the running total of sales per seller. -- 
+
+SELECT seller_id, order_id, order_date, sale, 
+sum(sale) OVER(
+			PARTITION BY seller_id
+			ORDER BY order_date) as running_total
+FROM Orders;
+
+-- 17. Find the first order date for each customer --
+
+SELECT customer_id, order_id, order_date,
+min(order_date) OVER(PARTITION BY customer_id) as first_order_date
+FROM Orders;
+
+-- 18. Rank the top 3 customers by total revenue within each state --
+
+WITH customer_revenue as (
+	SELECT customer_id, state,
+	sum(sale) as total_revenue
+	FROM Orders
+	GROUP BY customer_id, state
+),
+
+ranked_customers as (
+	SELECT *, 
+	rank() OVER(PARTITION BY state ORDER BY total_revenue DESC) as revenue_rank
+	FROM customer_revenue
+)
+
+SELECT *
+FROM ranked_customers
+WHERE revenue_rank &lt;= 3;
+
+-- 19. 	Determine the product with the highest month-over-month revenue increase --
+
+WITH monthly_revenue as (
+	SELECT product_id, 
+	strftime('%m', order_date) as order_month,
+	sum(sale) as total_revenue
+	FROM Orders
+	GROUP BY product_id, order_month
+),
+
+revenue_with_lag as (
+	SELECT *,
+	lag(total_revenue) OVER(PARTITION BY product_id ORDER BY order_month) as prev_month_revenue,
+	(total_revenue - lag(total_revenue) OVER(PARTITION BY product_id ORDER BY order_month)) as revenue_change
+	FROM monthly_revenue
+)
+
+SELECT *
+FROM revenue_with_lag
+ORDER BY revenue_change DESC
+LIMIT 1;
+
+-- 20. Identify orders where sale was higher than any previous order by same seller --
+
+SELECT 
+  order_id,
+  seller_id,
+  order_date,
+  sale,
+  MAX(sale) OVER (
+    PARTITION BY seller_id 
+    ORDER BY order_date 
+    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+  ) AS max_previous_sale
+FROM orders
+WHERE sale &gt; COALESCE(
+  MAX(sale) OVER (
+    PARTITION BY seller_id 
+    ORDER BY order_date 
+    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+  ), 0
+);
+
+WITH sales_with_max AS (
+  SELECT 
+    order_id,
+    seller_id,
+    order_date,
+    sale,
+    (
+      SELECT MAX(s2.sale)
+      FROM orders s2
+      WHERE s2.seller_id = s1.seller_id
+        AND s2.order_date &lt; s1.order_date
+    ) AS max_previous_sale
+  FROM orders s1
+)
+SELECT *
+FROM sales_with_max
+WHERE sale &gt; COALESCE(max_previous_sale, 0);
+
+
+-- 21. Calculate profit per order --
+SELECT 
+  o.order_id,
+  o.product_id,
+  o.sale,
+  o.quantity,
+  p.cogs,
+  (o.sale - (o.quantity * p.cogs)) AS profit
+FROM Orders o
+JOIN Products p
+ON o.product_id = p.product_id
+ORDER BY profit DESC;
+
+-- 22. Calculate profit margin percentage for each sale -- 
+
+SELECT 
+  o.order_id,
+  o.sale,
+  o.quantity,
+  p.cogs,
+  ROUND(((o.sale - (o.quantity * p.cogs)) * 100.0 / o.sale), 2) AS profit_margin_percentage
+FROM orders o
+JOIN products p ON o.product_id = p.product_id;
+
+-- 23. Top 5 products whose revenue decreased compared to the previous year --
+
+WITH yearly_revenue AS (
+  SELECT 
+    product_id,
+    STRFTIME('%Y', order_date) AS order_year,
+    SUM(sale) AS total_revenue
+  FROM orders
+  GROUP BY product_id, order_year
+),
+revenue_change AS (
+  SELECT *,
+    LAG(total_revenue) OVER (PARTITION BY product_id ORDER BY order_year) AS prev_year_revenue,
+    (total_revenue - LAG(total_revenue) OVER (PARTITION BY product_id ORDER BY order_year)) AS revenue_diff
+  FROM yearly_revenue
+)
+SELECT *
+FROM revenue_change
+WHERE revenue_diff &lt; 0
+ORDER BY revenue_diff ASC
+LIMIT 5;
+
+-- 24. Identify the highest profitable sub-category --
+
+SELECT 
+  sub_category,
+  SUM(o.sale - (o.quantity * p.cogs)) AS total_profit
+FROM orders o
+JOIN products p ON o.product_id = p.product_id
+GROUP BY sub_category
+ORDER BY total_profit DESC
+LIMIT 1;
+
+-- 25. Calculate percentage contribution of each sub-category to total revenue --
+
+WITH subcat_revenue AS (
+  SELECT 
+    sub_category,
+    SUM(sale) AS subcat_total
+  FROM orders
+  GROUP BY sub_category
+),
+total_revenue AS (
+  SELECT SUM(sale) AS grand_total FROM orders
+)
+SELECT 
+  s.sub_category,
+  ROUND((s.subcat_total * 100.0) / t.grand_total, 2) AS revenue_percentage
+FROM subcat_revenue s, total_revenue t
+ORDER BY revenue_percentage DESC;
+
+-- 26. List sellers with the highest return rate (returns/orders) --
+WITH total_orders as (
+SELECT seller_id, count(*) as total_orders 
+FROM Orders
+GROUP BY seller_id
+),
+
+returned_orders as (
+SELECT o.seller_id, count(*) as total_returns
+FROM Return r
+JOIN Orders o
+ON r.order_id = o.order_id
+GROUP BY o.seller_id
+)
+
+SELECT 
+t.seller_id,
+COALESCE(r.total_returns, 0) AS total_returns,
+  t.total_orders,
+  ROUND(COALESCE(r.total_returns, 0) * 100.0 / t.total_orders, 2) AS return_rate_percentage
+FROM total_orders t
+LEFT JOIN returned_orders r
+ON t.seller_id = r.seller_id
+ORDER BY return_rate_percentage DESC;
+
+-- 27. Determine the month with the highest number of orders --
+
+SELECT 
+  STRFTIME('%Y-%m', order_date) AS order_month,
+  COUNT(*) AS order_count
+FROM orders
+GROUP BY order_month
+ORDER BY order_count DESC
+LIMIT 1;
+
+-- 28. Top 2 categories that received maximum returns and their return percentage --
+
+WITH total_orders AS (
+  SELECT category, COUNT(*) AS total_orders
+  FROM orders
+  GROUP BY category
+),
+returned_orders AS (
+  SELECT o.category, COUNT(*) AS total_returns
+  FROM Return r
+  JOIN orders o ON r.order_id = o.order_id
+  GROUP BY o.category
+)
+SELECT 
+  t.category,
+  r.total_returns,
+  t.total_orders,
+  ROUND((r.total_returns * 100.0) / t.total_orders, 2) AS return_percentage
+FROM total_orders t
+JOIN returned_orders r ON t.category = r.category
+ORDER BY return_percentage DESC
+LIMIT 2;
+
+-- 29. Display the difference in monthly revenue per category from the previous month --
+
+WITH monthly_cat_sales as (
+	SELECT
+	category, 
+	STRFTIME('%Y-%m', order_date) AS order_month,
+	sum(sale) as total_sales
+	FROM Orders
+	GROUP BY category, order_month
+),
+
+sales_diff as (
+SELECT *,
+lag(total_sales) OVER (PARTITION BY category ORDER BY order_month) as prev_month_sales,
+(total_sales - lag(total_sales) OVER (PARTITION BY category ORDER BY order_month)) as sales_diff
+FROM monthly_cat_sales
+)
+
+SELECT *
+FROM sales_diff
+ORDER BY category, order_month;
+
+-- 30. Find customers who returned more than 50% of their orders --
+
+WITH total_orders AS (
+  SELECT customer_id, COUNT(*) AS total_orders
+  FROM orders
+  GROUP BY customer_id
+),
+returned_orders AS (
+  SELECT o.customer_id, COUNT(*) AS total_returns
+  FROM Return r
+  JOIN orders o ON r.order_id = o.order_id
+  GROUP BY o.customer_id
+)
+SELECT 
+  t.customer_id,
+  t.total_orders,
+  COALESCE(r.total_returns, 0) AS total_returns,
+  ROUND(COALESCE(r.total_returns, 0) * 100.0 / t.total_orders, 2) AS return_percentage
+FROM total_orders t
+LEFT JOIN returned_orders r ON t.customer_id = r.customer_id
+WHERE COALESCE(r.total_returns, 0) * 1.0 / t.total_orders &gt; 0.5;
+
+
+</sql><current_tab id="0"/></tab_sql></sqlb_project>
